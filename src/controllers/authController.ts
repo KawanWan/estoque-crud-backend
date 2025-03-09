@@ -1,37 +1,73 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import pool from '../config/db';
+import prisma from '../config/prisma';
 
-export const register = async (req: Request, res: Response) => {
+interface RegisterBody {
+  name: string;
+  email: string;
+  password: string;
+}
+
+interface LoginBody {
+  email: string;
+  password: string;
+}
+
+export const register = async (
+  req: Request<{}, {}, RegisterBody>,
+  res: Response
+): Promise<void> => {
   const { name, email, password } = req.body;
-  const hashedPassword = await bcrypt.hash(password, 10);
+
+  if (!name || !email || !password) {
+    res.status(400).json({ error: 'Todos os campos são obrigatórios.' });
+    return;
+  }
 
   try {
-    const [result] = await pool.query(
-      'INSERT INTO users (name, email, password) VALUES (?, ?, ?)',
-      [name, email, hashedPassword]
-    );
-    res.status(201).json({ message: 'Usuário registrado com sucesso!' });
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await prisma.user.create({
+      data: { name, email, password: hashedPassword }
+    });
+
+    res.status(201).json({ message: 'Usuário criado!', user });
   } catch (error) {
-    res.status(500).json({ error: 'Erro ao registrar usuário.' });
+    res.status(500).json({ error: 'Erro no registro' });
   }
 };
 
-export const login = async (req: Request, res: Response) => {
+export const login = async (
+  req: Request<{}, {}, LoginBody>,
+  res: Response
+): Promise<void> => {
   const { email, password } = req.body;
 
+  if (!email || !password) {
+    res.status(400).json({ error: 'Email e senha são obrigatórios.' });
+    return;
+  }
+
   try {
-    const [rows]: any = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
-    if (rows.length === 0) return res.status(400).json({ error: 'Email ou senha incorretos.' });
+    const user = await prisma.user.findUnique({ where: { email } });
 
-    const user = rows[0];
+    if (!user) {
+      res.status(401).json({ error: 'Credenciais inválidas' });
+      return;
+    }
+
     const validPassword = await bcrypt.compare(password, user.password);
-    if (!validPassword) return res.status(400).json({ error: 'Email ou senha incorretos.' });
+    if (!validPassword) {
+      res.status(401).json({ error: 'Credenciais inválidas' });
+      return;
+    }
 
-    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET!, { expiresIn: '1h' });
+    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET!, {
+      expiresIn: '1h'
+    });
+
     res.json({ token });
   } catch (error) {
-    res.status(500).json({ error: 'Erro ao fazer login.' });
+    res.status(500).json({ error: 'Erro no login' });
   }
 };

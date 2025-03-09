@@ -1,7 +1,15 @@
 import express from 'express';
-import { getProducts, addProduct, updateProduct, deleteProduct } from '../controllers/productController';
+import { authMiddleware } from '../middleware/authMiddleware';
+import {
+  getProducts,
+  addProduct,
+  updateProduct,
+  deleteProduct
+} from '../controllers/productController';
 
 const router = express.Router();
+
+router.use(authMiddleware);
 
 router.get('/', getProducts);
 router.post('/', addProduct);
